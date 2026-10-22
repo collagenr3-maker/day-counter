@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>今日は何日目？</title>
+<style>
+:root{--bg:#eef0ec;--card:#fbfbf8;--tx:#25302b;--sub:#6b766f;--ac:#3f7d6b;--line:#d9ddd6;--err:#b3412f}
+@media (prefers-color-scheme:dark){:root{--bg:#1c2220;--card:#262e2b;--tx:#e9eeea;--sub:#9aa7a0;--ac:#6fb59f;--line:#3a4541;--err:#f08a77}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",Meiryo,sans-serif;line-height:1.6}
+main{max-width:480px;margin:0 auto;padding:24px 16px 40px}
+section{background:var(--card);border-radius:16px;padding:20px;margin-bottom:14px}
+.hero{text-align:center;padding:32px 20px 24px}
+.date{color:var(--sub);font-size:1rem}
+.big{font-size:5rem;font-weight:700;line-height:1.1;margin:8px 0 0;color:var(--ac);font-variant-numeric:tabular-nums}
+.big small{font-size:1.6rem;margin-left:4px;color:var(--tx)}
+.of{color:var(--sub);font-size:.9rem}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:10px}
+.bar i{display:block;height:100%;width:0;background:var(--ac);border-radius:3px}
+.pct{display:flex;justify-content:space-between;font-size:.9rem;color:var(--sub)}
+.pct b{color:var(--tx);font-size:1.1rem}
+h2{font-size:.85rem;color:var(--sub);margin:0 0 8px;font-weight:600;letter-spacing:.05em}
+.ann b{font-size:1.25rem;display:block}
+.ann p{margin:4px 0 0;color:var(--sub);font-size:.95rem}
+.row{display:flex;gap:10px;margin-bottom:12px}
+label{flex:1;font-size:.85rem;color:var(--sub)}
+input{width:100%;font-size:1.1rem;padding:10px;margin-top:4px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--tx)}
+button{width:100%;font-size:1.05rem;padding:12px;border:0;border-radius:10px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer}
+#res{margin-top:14px;font-size:1.3rem;font-weight:600;text-align:center;min-height:1.6em}
+#res.err{color:var(--err);font-size:1rem;font-weight:400}
+</style>
+</head>
+<body>
+<main>
+<section class="hero">
+  <div class="date" id="today"></div>
+  <div class="big"><span id="n">-</span><small>日目</small></div>
+  <div class="of" id="of"></div>
+</section>
+<section>
+  <div class="pct"><span>今年の進捗</span><b id="pct">-</b></div>
+  <div class="bar"><i id="fill"></i></div>
+</section>
+<section class="ann">
+  <h2>今日の記念日</h2>
+  <b id="an"></b><p id="ad"></p>
+</section>
+<section>
+  <h2>日数から日付を調べる</h2>
+  <div class="row">
+    <label>西暦<input id="y" type="number" inputmode="numeric" min="1" max="9999"></label>
+    <label>何日目<input id="d" type="number" inputmode="numeric" min="1" max="366"></label>
+  </div>
+  <button id="go" type="button">計算する</button>
+  <div id="res" aria-live="polite"></div>
+</section>
+</main>
+<script>
+"use strict";
+var WD=["日","月","火","水","木","金","土"];
+function isLeap(y){return (y%4===0&&y%100!==0)||y%400===0}
+function daysIn(y){return isLeap(y)?366:365}
+// UTC基準で計算し、タイムゾーン/夏時間の影響を排除
+function utc(y,m,d){var t=new Date(0);t.setUTCFullYear(y,m,d);return t.getTime()}
+function dayOfYear(y,m,d){return Math.round((utc(y,m-1,d)-utc(y,0,1))/864e5)+1}
+function fromDay(y,n){var t=new Date(utc(y,0,n));return{y:t.getUTCFullYear(),m:t.getUTCMonth()+1,d:t.getUTCDate(),w:t.getUTCDay()}}
+
+// 記念日データ "月-日":[名称,説明]（確実に実在するもののみ収録）
+var A={
+"1-1":["元日","年の初めを祝う国民の祝日。"],
+"1-5":["いちごの日","「いち(1)ご(5)」の語呂合わせ。"],
+"1-7":["七草の日","七草がゆを食べて無病息災を願う人日の節句。"],
+"1-10":["110番の日","警察への緊急通報110番の周知を目的とした日。"],
+"1-11":["鏡開き","鏡餅を割って食べ、一年の無事を願う行事。"],
+"1-15":["小正月","元日の大正月に対し、1月15日を中心とする正月行事。"],
+"1-17":["防災とボランティアの日","1995年の阪神・淡路大震災を契機に制定。"],
+"1-18":["118番の日","海の事故・事件の緊急通報118番の周知の日。"],
+"1-31":["愛妻家の日","「あい(1)さい(31)」の語呂合わせ。"],
+"2-11":["建国記念の日","建国をしのび、国を愛する心を養う国民の祝日。"],
+"2-14":["バレンタインデー","親しい人に贈り物をする日。"],
+"2-22":["猫の日","「ニャン(2)ニャン(2)ニャン(2)」の語呂合わせ。"],
+"2-23":["天皇誕生日","天皇の誕生日を祝う国民の祝日。"],
+"2-29":["うるう日","4年に一度(例外あり)、2月に加わる日。"],
+"3-3":["ひな祭り","女の子の健やかな成長を願う桃の節句。"],
+"3-8":["国際女性デー","女性の権利と平等を考える国連の記念日。"],
+"3-11":["東日本大震災の日","2011年3月11日の震災を忘れず備えを考える日。"],
+"3-14":["ホワイトデー","バレンタインデーのお返しをする日。"],
+"4-1":["エイプリルフール","罪のない嘘をついてもよいとされる風習の日。"],
+"4-18":["発明の日","1885年の専売特許条例公布にちなむ。"],
+"4-22":["アースデイ","地球環境を考える日。"],
+"4-23":["子ども読書の日","子どもの読書活動の推進を目的とする日。"],
+"4-29":["昭和の日","激動の昭和を顧み、国の将来を考える国民の祝日。"],
+"5-1":["メーデー","労働者の権利と連帯を示す国際的な日。"],
+"5-3":["憲法記念日","日本国憲法の施行を記念する国民の祝日。"],
+"5-4":["みどりの日","自然に親しみ恩恵に感謝する国民の祝日。"],
+"5-5":["こどもの日","子どもの人格を重んじ幸福を図る国民の祝日。"],
+"5-9":["アイスクリームの日","1964年に東京アイスクリーム協会が制定。"],
+"5-29":["こんにゃくの日","「こん(5)にゃく(29)」の語呂合わせ。"],
+"6-4":["むし歯予防デー","歯の健康を考える日。「む(6)し(4)」の語呂合わせ。"],
+"6-5":["世界環境デー","環境保全への関心を高める国連の記念日。"],
+"6-10":["時の記念日","671年に漏刻(水時計)を用いたとされる故事にちなむ。"],
+"6-16":["和菓子の日","嘉祥の日の故事にちなみ、和菓子を食べる日。"],
+"7-7":["七夕","織姫と彦星の伝説にちなみ願いごとをする行事。"],
+"7-10":["納豆の日","「なっ(7)とう(10)」の語呂合わせ。"],
+"8-6":["広島原爆の日","1945年の原爆投下を悼み平和を祈る日。"],
+"8-9":["長崎原爆の日","1945年の原爆投下を悼み平和を祈る日。"],
+"8-11":["山の日","山に親しむ機会を得て感謝する国民の祝日。"],
+"8-15":["終戦の日","戦没者を追悼し平和を祈念する日。"],
+"8-31":["野菜の日","「や(8)さ(3)い(1)」の語呂合わせ。"],
+"9-1":["防災の日","1923年の関東大震災にちなみ、防災意識を高める日。"],
+"9-9":["救急の日","救急医療・救急業務への理解を深める日。"],
+"9-12":["宇宙の日","1992年に毛利衛さんが日本人初のスペースシャトル搭乗を果たした日にちなむ。"],
+"9-29":["招き猫の日","「く(9)る(2)ふ(9)く」の語呂合わせ。"],
+"10-1":["コーヒーの日","国際コーヒーの日にあわせ、日本で制定。"],
+"10-10":["目の愛護デー","「10」を横にすると眉と目に見えることから。"],
+"10-14":["鉄道の日","1872年の日本初の鉄道開業にちなむ。"],
+"10-31":["ハロウィン","秋の収穫と悪霊払いに由来する行事。"],
+"11-1":["犬の日","「ワン(1)ワン(1)ワン(1)」の語呂合わせ。"],
+"11-3":["文化の日","自由と平和を愛し文化をすすめる国民の祝日。"],
+"11-9":["119番の日","消防・救急の緊急通報119番の周知の日。"],
+"11-15":["七五三","3歳・5歳・7歳の子の成長を祝う行事。"],
+"11-22":["いい夫婦の日","「いい(11)ふう(22)ふ」の語呂合わせ。"],
+"11-23":["勤労感謝の日","勤労を尊び生産を祝う国民の祝日。"],
+"12-1":["映画の日","1896年に日本で映画が初めて一般公開されたとされる日にちなむ。"],
+"12-10":["世界人権デー","1948年の世界人権宣言の採択にちなむ。"],
+"12-24":["クリスマスイブ","クリスマスの前夜。"],
+"12-25":["クリスマス","キリストの降誕を祝う日。"],
+"12-31":["大晦日","一年の最後の日。除夜の鐘で年を送る。"]
+};
+
+function $(id){return document.getElementById(id)}
+function render(){
+  var t=new Date(),y=t.getFullYear(),m=t.getMonth()+1,d=t.getDate();
+  var n=dayOfYear(y,m,d),tot=daysIn(y),p=n/tot*100;
+  $("today").textContent=y+"年"+m+"月"+d+"日（"+WD[t.getDay()]+"）";
+  $("n").textContent=n;
+  $("of").textContent=y+"年は全"+tot+"日"+(isLeap(y)?"（うるう年）":"");
+  $("pct").textContent=p.toFixed(1)+"%";
+  $("fill").style.width=p+"%";
+  var a=A[m+"-"+d];
+  $("an").textContent=a?a[0]:"登録されている記念日はありません";
+  $("ad").textContent=a?a[1]:"この日の記念日はアプリに未収録です。";
+  $("y").value=y;
+}
+function calc(){
+  var ys=$("y").value.trim(),ds=$("d").value.trim(),r=$("res");
+  r.className="err";
+  if(!/^\d+$/.test(ys)||!/^\d+$/.test(ds)){r.textContent="西暦と日数は半角の整数で入力してください。";return}
+  var y=+ys,n=+ds;
+  if(y<1||y>9999){r.textContent="西暦は1〜9999の範囲で入力してください。";return}
+  var max=daysIn(y);
+  if(n<1||n>max){r.textContent=y+"年は"+max+"日までです（1〜"+max+"）。";return}
+  var o=fromDay(y,n);
+  r.className="";
+  r.textContent=o.y+"年"+o.m+"月"+o.d+"日（"+WD[o.w]+"）";
+}
+$("go").addEventListener("click",calc);
+$("d").addEventListener("keydown",function(e){if(e.key==="Enter")calc()});
+render();
+</script>
+</body>
+</html>
